@@ -152,259 +152,314 @@
 
   <script>
     let trackers = [], current = 0, draggedRow;
+    const STORAGE_KEY = 'trackerData';
 
-    
-const STORAGE_KEY = 'trackerData';
-
-// 1. Pressing Enter (without Shift) in any contenteditable will commit & save.
-//    Shift+Enter will still insert a newline.
-document.body.addEventListener('keydown', function(e) {
-  if (e.target.isContentEditable && e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();           // prevent the newline
-    e.target.blur();              // fire a blur so your save logic can pick it up
-    applyFlashes();               // recalculates + saveData()
-  }
-});
-
-// 2. Whenever a contenteditable field loses focus, also save.
-document.body.addEventListener('blur', function(e) {
-  if (e.target.isContentEditable) {
-    applyFlashes();
-  }
-}, true);
-
-
-
-
-function saveData() {
-      console.log('saveData called');
-  const data = { current, trackers: [] };
-  document.querySelectorAll('.tracker-panel').forEach(panel => {
-    const title = panel.querySelector('.tracker-title').textContent;
-    const warnDays = +panel.querySelector('.warnDaysInput').value;
-    const alarmDays = +panel.querySelector('.alarmDaysInput').value;
-    const projects = [];
-    panel.querySelectorAll('.project-container').forEach(prj => {
-      const prjTitle = prj.querySelector('h2').textContent;
-      const tasks = [];
-      prj.querySelectorAll('.task-row').forEach(tr => {
-        const rowData = {
-          name: tr.cells[1].textContent,
-          date: tr.querySelector('input[type="date"]').value,
-          status: tr.querySelector('.task-status').value,
-          priority: tr.querySelector('.task-priority').value,
-          estimate: tr.querySelector('.task-estimate').textContent,
-          notes: tr.cells[6].textContent,
-          flashDisabled: tr.querySelector('.days-left').dataset.flashDisabled === 'true',
-          hue: tr.dataset.hue,
-          subtasks: []
-        };
-        const sr = tr.nextElementSibling;
-        sr.querySelectorAll('.subtask-entry').forEach(sub => {
-          rowData.subtasks.push({
-            name: sub.cells[1].textContent,
-            date: sub.querySelector('input[type="date"]').value,
-            status: sub.querySelector('.subtask-status').value,
-            priority: sub.querySelector('.subtask-priority').value,
-            notes: sub.cells[5].textContent,
-            flashDisabled: sub.querySelector('.days-left').dataset.flashDisabled === 'true',
-            hue: sub.dataset.hue
-          });
-        });
-        tasks.push(rowData);
-      });
-      projects.push({ title: prjTitle, tasks });
+    document.body.addEventListener('keydown', function(e) {
+      if (e.target.isContentEditable && e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        e.target.blur();
+        applyFlashes();
+      }
     });
-    data.trackers.push({ title, settings: { warnDays, alarmDays }, projects });
-  });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
 
-// =====================================================
-// Reconstruct a saved task (and its subtasks)
-// =====================================================
-function addTaskFromData(panel, projDiv, taskData) {
-  const { name, date, status, priority, estimate, notes, flashDisabled, hue, subtasks } = taskData;
-  const dl = daysLeft(date);
+    document.body.addEventListener('blur', function(e) {
+      if (e.target.isContentEditable) applyFlashes();
+    }, true);
 
-  // Create main task row
-  const tr = document.createElement('tr');
-  tr.className = 'task-row';
-  tr.dataset.hue = hue;
-  tr.style.backgroundColor = `hsl(${hue},70%,90%)`;
-  tr.innerHTML = `
-    <td class="drag-handle">↕</td>
-    <td contenteditable>${name}</td>
-    <td><input type="date" value="${date}"></td>
-    <td><select class="task-status">
-      <option${status==='Not Started'?' selected':''}>Not Started</option>
-      <option${status==='In Progress'?' selected':''}>In Progress</option>
-      <option${status==='Done'?' selected':''}>Done</option>
-      <option${status==='On Hold'?' selected':''}>On Hold</option>
-    </select></td>
-    <td><select class="task-priority">
-      <option${priority==='Low'?' selected':''}>Low</option>
-      <option${priority==='Medium'?' selected':''}>Medium</option>
-      <option${priority==='High'?' selected':''}>High</option>
-    </select></td>
-    <td contenteditable class="task-estimate">${estimate}</td>
-    <td contenteditable>${notes}</td>
-    <td><span class="days-left" data-days-left="${dl}" data-flash-disabled="${flashDisabled}">${dl}d</span></td>
-    <td>
-      <button class="toggle-btn">Show Subtasks</button>
-      <button class="delete-btn">Delete</button>
-    </td>`;
+    function saveData() {
+      const data = { current, trackers: [] };
+      document.querySelectorAll('.tracker-panel').forEach(panel => {
+        const title     = panel.querySelector('.tracker-title').textContent;
+        const warnDays  = +panel.querySelector('.warnDaysInput').value;
+        const alarmDays = +panel.querySelector('.alarmDaysInput').value;
+        const projects  = [];
 
-  // Create its hidden subtask container
-  const sr = document.createElement('tr');
-  sr.className = 'subtask-container';
-  sr.style.display = 'none';
-  sr.innerHTML = `
-    <td colspan="9">
-      <table>
-        <thead><tr>
-          <th></th><th>Subtask</th><th>Due Date</th><th>Status</th>
-          <th>Priority</th><th>Notes</th><th>Days Left</th><th>Actions</th>
-        </tr></thead>
-        <tbody class="subtask-body"></tbody>
-        <tfoot><tr>
-          <td></td>
-          <td><input type="text" class="subtask-name" placeholder="Subtask"></td>
-          <td><input type="date" class="subtask-date" value="${date}"></td>
+        panel.querySelectorAll('.project-container').forEach(prj => {
+          const prjTitle = prj.querySelector('h2').textContent;
+          const tasks    = [];
+
+          prj.querySelectorAll('.task-row').forEach(tr => {
+            const rowData = {
+              name: tr.cells[1].textContent,
+              date: tr.querySelector('input[type="date"]').value,
+              status: tr.querySelector('.task-status').value,
+              priority: tr.querySelector('.task-priority').value,
+              estimate: tr.querySelector('.task-estimate').textContent,
+              notes: tr.cells[6].textContent,
+              flashDisabled: tr.querySelector('.days-left').dataset.flashDisabled === 'true',
+              hue: tr.dataset.hue,
+              // persist whether this task’s subtasks are currently shown
+              showSubtasks: tr.nextElementSibling.style.display !== 'none',
+              subtasks: []
+            };
+            const sr = tr.nextElementSibling;
+            sr.querySelectorAll('.subtask-entry').forEach(sub => {
+              rowData.subtasks.push({
+                name: sub.cells[1].textContent,
+                date: sub.querySelector('input[type="date"]').value,
+                status: sub.querySelector('.subtask-status').value,
+                priority: sub.querySelector('.subtask-priority').value,
+                notes: sub.cells[5].textContent,
+                flashDisabled: sub.querySelector('.days-left').dataset.flashDisabled === 'true',
+                hue: sub.dataset.hue
+              });
+            });
+            tasks.push(rowData);
+          });
+
+          projects.push({ title: prjTitle, tasks });
+        });
+
+        data.trackers.push({ title, settings:{ warnDays, alarmDays }, projects });
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    // =====================================================
+    // Reconstruct a saved task (and its subtasks)
+    // =====================================================
+    function addTaskFromData(panel, projDiv, taskData) {
+      const { name, date, status, priority, estimate, notes, flashDisabled, hue, showSubtasks, subtasks } = taskData;
+      const dl = daysLeft(date);
+
+      // Create main task row
+      const tr = document.createElement('tr');
+      tr.className = 'task-row';
+      tr.dataset.hue = hue;
+      tr.style.backgroundColor = `hsl(${hue},70%,90%)`;
+      tr.innerHTML = `
+        <td class="drag-handle">↕</td>
+        <td contenteditable>${name}</td>
+        <td><input type="date" value="${date}"></td>
+        <td><select class="task-status">
+          <option${status==='Not Started'?' selected':''}>Not Started</option>
+          <option${status==='In Progress'?' selected':''}>In Progress</option>
+          <option${status==='Done'?' selected':''}>Done</option>
+          <option${status==='On Hold'?' selected':''}>On Hold</option>
+        </select></td>
+        <td><select class="task-priority">
+          <option${priority==='Low'?' selected':''}>Low</option>
+          <option${priority==='Medium'?' selected':''}>Medium</option>
+          <option${priority==='High'?' selected':''}>High</option>
+        </select></td>
+        <td contenteditable class="task-estimate">${estimate}</td>
+        <td contenteditable>${notes}</td>
+        <td><span class="days-left" data-days-left="${dl}" data-flash-disabled="${flashDisabled}">${dl}d</span></td>
+        <td>
+          <button class="toggle-btn">Show Subtasks</button>
+          <button class="delete-btn">Delete</button>
+        </td>`;
+
+      // Create its subtask container
+      const sr = document.createElement('tr');
+      sr.className = 'subtask-container';
+      // initialize subtask visibility from saved flag
+      sr.style.display = showSubtasks ? 'table-row' : 'none';
+      sr.innerHTML = `
+        <td colspan="9">
+          <table>
+            <thead><tr>
+              <th></th><th>Subtask</th><th>Due Date</th><th>Status</th>
+              <th>Priority</th><th>Notes</th><th>Days Left</th><th>Actions</th>
+            </tr></thead>
+            <tbody class="subtask-body"></tbody>
+            <tfoot><tr>
+              <td></td>
+              <td><input type="text" class="subtask-name" placeholder="Subtask"></td>
+              <td><input type="date" class="subtask-date" value="${date}"></td>
+              <td><select class="subtask-status">
+                <option>Not Started</option>
+                <option>In Progress</option>
+                <option>Done</option>
+                <option>On Hold</option>
+              </select></td>
+              <td><select class="subtask-priority">
+                <option>Low</option>
+                <option>Medium</option>
+                <option>High</option>
+              </select></td>
+              <td><input type="text" class="subtask-notes" placeholder="Notes"></td>
+              <td></td>
+              <td><button class="add-subtask-btn">Add</button></td>
+            </tr></tfoot>
+          </table>
+        </td>`;
+
+      projDiv.querySelector('.task-body').appendChild(tr);
+      projDiv.querySelector('.task-body').appendChild(sr);
+
+      // restore & wire toggle
+      const toggleBtn = tr.querySelector('.toggle-btn');
+      toggleBtn.textContent = showSubtasks ? 'Hide Subtasks' : 'Show Subtasks';
+      toggleBtn.onclick = () => {
+        const nowHidden = sr.style.display === 'none';
+        sr.style.display = nowHidden ? 'table-row' : 'none';
+        toggleBtn.textContent = nowHidden ? 'Hide Subtasks' : 'Show Subtasks';
+        saveData();
+      };
+
+      // delete task
+      tr.querySelector('.delete-btn').onclick = () => {
+        if (confirm('Delete this task?')) { tr.remove(); sr.remove(); applyFlashes(); }
+      };
+      // recalc on change
+      tr.querySelectorAll('input, select').forEach(i => i.addEventListener('change', applyFlashes));
+      // toggle alert
+      tr.querySelector('.days-left').addEventListener('click', e => {
+        const s = e.currentTarget;
+        s.dataset.flashDisabled = s.dataset.flashDisabled==='true'?'false':'true';
+        if (s.dataset.flashDisabled==='true') {
+          const img = document.createElement('img'); img.src='NoAlert_ICON.png'; img.className='no-alert-icon';
+          s.parentNode.appendChild(img);
+        } else {
+          const ico = s.parentNode.querySelector('.no-alert-icon'); if (ico) ico.remove();
+        }
+        applyFlashes();
+      });
+
+      // wire add-subtask button
+      sr.querySelector('.add-subtask-btn').onclick = e => {
+        e.preventDefault();
+        const nEl = sr.querySelector('.subtask-name'),
+              dEl = sr.querySelector('.subtask-date'),
+              sEl = sr.querySelector('.subtask-status'),
+              pEl = sr.querySelector('.subtask-priority'),
+              noEl= sr.querySelector('.subtask-notes');
+        const n2 = nEl.value.trim(), d2 = dEl.value;
+        if (!n2 || !d2) return alert('Name & due date required');
+        const dl2 = daysLeft(d2);
+        const sTr = document.createElement('tr');
+        sTr.className = 'subtask-entry'; sTr.dataset.hue = hue;
+        sTr.style.backgroundColor = `hsl(${hue},70%,95%)`;
+        sTr.innerHTML = `
+          <td class="drag-handle">↕</td>
+          <td contenteditable>${n2}</td>
+          <td><input type="date" value="${d2}"></td>
           <td><select class="subtask-status">
-            <option>Not Started</option>
-            <option>In Progress</option>
-            <option>Done</option>
-            <option>On Hold</option>
+            <option${sEl.value==='Not Started'?' selected':''}>Not Started</option>
+            <option${sEl.value==='In Progress'?' selected':''}>In Progress</option>
+            <option${sEl.value==='Done'?' selected':''}>Done</option>
+            <option${sEl.value==='On Hold'?' selected':''}>On Hold</option>
           </select></td>
           <td><select class="subtask-priority">
-            <option>Low</option>
-            <option>Medium</option>
-            <option>High</option>
+            <option${pEl.value==='Low'?' selected':''}>Low</option>
+            <option${pEl.value==='Medium'?' selected':''}>Medium</option>
+            <option${pEl.value==='High'?' selected':''}>High</option>
           </select></td>
-          <td><input type="text" class="subtask-notes" placeholder="Notes"></td>
-          <td></td>
-          <td><button class="add-subtask-btn">Add</button></td>
-        </tr></tfoot>
-      </table>
-    </td>`;
+          <td contenteditable>${noEl.value}</td>
+          <td><span class="days-left" data-days-left="${dl2}" data-flash-disabled="false">${dl2}d</span></td>
+          <td><button class="delete-btn">Delete</button></td>`;
+        sr.querySelector('.subtask-body').appendChild(sTr);
+        // wire new subtask handlers
+        sTr.querySelector('.delete-btn').onclick = () => {
+          if (confirm('Delete this subtask?')) { sTr.remove(); applyFlashes(); }
+        };
+        sTr.querySelectorAll('input, select').forEach(i => i.addEventListener('change', applyFlashes));
+        sTr.querySelector('.days-left').addEventListener('click', e => {
+          const s2 = e.currentTarget;
+          s2.dataset.flashDisabled = s2.dataset.flashDisabled==='true'?'false':'true';
+          if (s2.dataset.flashDisabled==='true') {
+            const img = document.createElement('img'); img.src='NoAlert_ICON.png'; img.className='no-alert-icon';
+            s2.parentNode.appendChild(img);
+          } else {
+            const ico = s2.parentNode.querySelector('.no-alert-icon'); if (ico) ico.remove();
+          }
+          applyFlashes();
+        });
+        applyFlashes();
+      };
 
-  projDiv.querySelector('.task-body').appendChild(tr);
-  projDiv.querySelector('.task-body').appendChild(sr);
-
-  // Re-bind the same handlers you have in addTask():
-  tr.querySelector('.delete-btn').onclick = () => { if(confirm('Delete this task?')){ tr.remove(); sr.remove(); applyFlashes(); }};
-  tr.querySelector('.toggle-btn').onclick = () => { sr.style.display = sr.style.display==='none' ? 'table-row' : 'none'; };
-  tr.querySelectorAll('input, select').forEach(i => i.addEventListener('change', applyFlashes));
-  tr.querySelector('.days-left').addEventListener('click', e => {
-    const s = e.currentTarget;
-    s.dataset.flashDisabled = s.dataset.flashDisabled==='true'?'false':'true';
-    if (s.dataset.flashDisabled==='true') {
-      const img = document.createElement('img'); img.src='NoAlert_ICON.png'; img.className='no-alert-icon';
-      s.parentNode.appendChild(img);
-    } else {
-      const ico = s.parentNode.querySelector('.no-alert-icon'); if(ico) ico.remove();
+      // reconstruct saved subtasks
+      subtasks.forEach(subData => addSubtaskFromData(panel, tr, subData));
     }
-    applyFlashes();
-  });
 
-  // Now reconstruct each saved subtask
-  subtasks.forEach(subData => addSubtaskFromData(panel, tr, subData));
-}
+    // =====================================================
+    // Reconstruct a single saved subtask
+    // =====================================================
+    function addSubtaskFromData(panel, taskRow, subData) {
+      const { name, date, status, priority, notes, flashDisabled, hue } = subData;
+      const dl = daysLeft(date);
+      const sr = taskRow.nextElementSibling;
+      const subTr = document.createElement('tr');
+      subTr.className = 'subtask-entry';
+      subTr.dataset.hue = hue;
+      subTr.style.backgroundColor = `hsl(${hue},70%,95%)`;
+      subTr.innerHTML = `
+        <td class="drag-handle">↕</td>
+        <td contenteditable>${name}</td>
+        <td><input type="date" value="${date}"></td>
+        <td><select class="subtask-status">
+          <option${status==='Not Started'?' selected':''}>Not Started</option>
+          <option${status==='In Progress'?' selected':''}>In Progress</option>
+          <option${status==='Done'?' selected':''}>Done</option>
+          <option${status==='On Hold'?' selected':''}>On Hold</option>
+        </select></td>
+        <td><select class="subtask-priority">
+          <option${priority==='Low'?' selected':''}>Low</option>
+          <option${priority==='Medium'?' selected':''}>Medium</option>
+          <option${priority==='High'?' selected':''}>High</option>
+        </select></td>
+        <td contenteditable>${notes}</td>
+        <td><span class="days-left" data-days-left="${dl}" data-flash-disabled="${flashDisabled}">${dl}d</span></td>
+        <td><button class="delete-btn">Delete</button></td>`;
+      sr.querySelector('.subtask-body').appendChild(subTr);
 
-// =====================================================
-// Reconstruct a single saved subtask
-// =====================================================
-function addSubtaskFromData(panel, taskRow, subData) {
-  const { name, date, status, priority, notes, flashDisabled, hue } = subData;
-  const dl = daysLeft(date);
-  const sr = taskRow.nextElementSibling;
-  const subTr = document.createElement('tr');
-  subTr.className = 'subtask-entry';
-  subTr.dataset.hue = hue;
-  subTr.style.backgroundColor = `hsl(${hue},70%,95%)`;
-  subTr.innerHTML = `
-    <td class="drag-handle">↕</td>
-    <td contenteditable>${name}</td>
-    <td><input type="date" value="${date}"></td>
-    <td><select class="subtask-status">
-      <option${status==='Not Started'?' selected':''}>Not Started</option>
-      <option${status==='In Progress'?' selected':''}>In Progress</option>
-      <option${status==='Done'?' selected':''}>Done</option>
-      <option${status==='On Hold'?' selected':''}>On Hold</option>
-    </select></td>
-    <td><select class="subtask-priority">
-      <option${priority==='Low'?' selected':''}>Low</option>
-      <option${priority==='Medium'?' selected':''}>Medium</option>
-      <option${priority==='High'?' selected':''}>High</option>
-    </select></td>
-    <td contenteditable>${notes}</td>
-    <td><span class="days-left" data-days-left="${dl}" data-flash-disabled="${flashDisabled}">${dl}d</span></td>
-    <td><button class="delete-btn">Delete</button></td>`;
-
-  sr.querySelector('.subtask-body').appendChild(subTr);
-
-  // Copy your usual handlers for subtask rows
-  subTr.querySelector('.delete-btn').onclick = () => { if(confirm('Delete this subtask?')){ subTr.remove(); applyFlashes(); }};
-  subTr.querySelectorAll('input, select').forEach(i => i.addEventListener('change', applyFlashes));
-  subTr.querySelector('.days-left').addEventListener('click', e => {
-    const s = e.currentTarget;
-    s.dataset.flashDisabled = s.dataset.flashDisabled==='true'?'false':'true';
-    if (s.dataset.flashDisabled==='true') {
-      const img = document.createElement('img'); img.src='NoAlert_ICON.png'; img.className='no-alert-icon';
-      s.parentNode.appendChild(img);
-    } else {
-      const ico = s.parentNode.querySelector('.no-alert-icon'); if(ico) ico.remove();
-    }
-    applyFlashes();
-  });
-}
-
-
-
-
-
-function loadData() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return false;
-  try {
-    const data = JSON.parse(raw);
-    document.getElementById('trackerTabs').innerHTML = '';
-    document.getElementById('trackerContainers').innerHTML = '';
-    hueCounter = 0; trackers = [];
-
-    data.trackers.forEach((trk, i) => {
-      addTracker();
-      if (i !== current) selectTracker(i);
-      const panel = document.querySelectorAll('.tracker-panel')[i];
-      panel.querySelector('.tracker-title').textContent = trk.title;
-	  
-	  // keep the tab label in sync when rehydrating
-	  document.querySelectorAll('.tracker-tab')[i].textContent = trk.title;
-
-      panel.querySelector('.warnDaysInput').value = trk.settings.warnDays;
-      panel.querySelector('.alarmDaysInput').value = trk.settings.alarmDays;
-
-      trk.projects.forEach(prj => {
-        createProject(panel);
-        const prjs = panel.querySelectorAll('.project-container');
-          const prjDiv = prjs[prjs.length - 1];
-        prjDiv.querySelector('h2').textContent = prj.title;
-        prj.tasks.forEach(task => addTaskFromData(panel, prjDiv, task));
+      subTr.querySelector('.delete-btn').onclick = () => {
+        if (confirm('Delete this subtask?')) { subTr.remove(); applyFlashes(); }
+      };
+      subTr.querySelectorAll('input, select').forEach(i => i.addEventListener('change', applyFlashes));
+      subTr.querySelector('.days-left').addEventListener('click', e => {
+        const s2 = e.currentTarget;
+        s2.dataset.flashDisabled = s2.dataset.flashDisabled==='true'?'false':'true';
+        if (s2.dataset.flashDisabled==='true') {
+          const img = document.createElement('img'); img.src='NoAlert_ICON.png'; img.className='no-alert-icon';
+          s2.parentNode.appendChild(img);
+        } else {
+          const ico = s2.parentNode.querySelector('.no-alert-icon'); if (ico) ico.remove();
+        }
+        applyFlashes();
       });
-    });
+    }
 
-    selectTracker(data.current || 0);
-    applyFlashes();
-    return true;
-  } catch (e) {
-    console.error('Failed loading:', e);
-    return false;
-  }
-}
+    function loadData() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      try {
+        const data = JSON.parse(raw);
+        document.getElementById('trackerTabs').innerHTML = '';
+        document.getElementById('trackerContainers').innerHTML = '';
+        hueCounter = 0;
+        trackers = [];
 
-function daysLeft(d) {
-      return Math.ceil((new Date(d) - new Date())/(1000*60*60*24));
+        data.trackers.forEach((trk, i) => {
+          addTracker();
+          if (i !== current) selectTracker(i);
+          const panel = document.querySelectorAll('.tracker-panel')[i];
+          panel.querySelector('.tracker-title').textContent = trk.title;
+          document.querySelectorAll('.tracker-tab')[i].textContent = trk.title;
+          panel.querySelector('.warnDaysInput').value  = trk.settings.warnDays;
+          panel.querySelector('.alarmDaysInput').value = trk.settings.alarmDays;
+
+          trk.projects.forEach(prj => {
+            createProject(panel);
+            const prjs   = panel.querySelectorAll('.project-container');
+            const prjDiv = prjs[prjs.length - 1];
+            prjDiv.querySelector('h2').textContent = prj.title;
+            prj.tasks.forEach(task => addTaskFromData(panel, prjDiv, task));
+          });
+        });
+
+        selectTracker(data.current || 0);
+        applyFlashes();
+        return true;
+      } catch(e) {
+        console.error('Failed loading:', e);
+        return false;
+      }
+    }
+
+    function daysLeft(d) {
+      return Math.ceil((new Date(d) - new Date()) / (1000*60*60*24));
     }
     let hueCounter = 0;
     function getUniqueHue() {
@@ -418,37 +473,32 @@ function daysLeft(d) {
 
     function addTracker() {
       trackers.push({});
-      const tpl = document.getElementById('trackerTemplate').content.cloneNode(true);
+      const tpl   = document.getElementById('trackerTemplate').content.cloneNode(true);
       const panel = document.createElement('div');
       panel.className = 'tracker-panel';
       panel.appendChild(tpl);
       document.getElementById('trackerContainers').appendChild(panel);
 
-      // tab
       const titleEl = panel.querySelector('.tracker-title');
-      const tab = document.createElement('div');
+      const tab     = document.createElement('div');
       tab.className = 'tracker-tab';
       tab.textContent = titleEl.textContent = `Tracker ${trackers.length}`;
       document.getElementById('trackerTabs').appendChild(tab);
 
-      // rename sync
       titleEl.addEventListener('input', () => tab.textContent = titleEl.textContent);
-
-      // tab click
       tab.addEventListener('click', () => {
         const idx = Array.from(document.querySelectorAll('.tracker-tab')).indexOf(tab);
         selectTracker(idx);
       });
 
-      // settings toggle
-      panel.querySelector('.settingsBtn')
-        .addEventListener('click', () => panel.querySelector('.settingsPanel').style.display = 'block');
-      panel.querySelector('.closeSettingsBtn')
-        .addEventListener('click', () => panel.querySelector('.settingsPanel').style.display = 'none');
+      panel.querySelector('.settingsBtn').addEventListener('click', () => {
+        panel.querySelector('.settingsPanel').style.display = 'block';
+      });
+      panel.querySelector('.closeSettingsBtn').addEventListener('click', () => {
+        panel.querySelector('.settingsPanel').style.display = 'none';
+      });
 
-      // new project
-      panel.querySelector('.newProjectBtn')
-        .addEventListener('click', () => createProject(panel));
+      panel.querySelector('.newProjectBtn').addEventListener('click', () => createProject(panel));
 
       selectTracker(trackers.length - 1);
     }
@@ -580,12 +630,10 @@ function daysLeft(d) {
 
       const sr = document.createElement('tr');
       sr.className = 'subtask-container'; sr.style.display = 'none';
-
       // default subtask date = today + 30
       const defaultSub = new Date();
       defaultSub.setDate(defaultSub.getDate() + 30);
       const subDateStr = defaultSub.toISOString().split('T')[0];
-
       sr.innerHTML = `
         <td colspan="9">
           <table>
@@ -619,18 +667,20 @@ function daysLeft(d) {
       projDiv.querySelector('.task-body').appendChild(tr);
       projDiv.querySelector('.task-body').appendChild(sr);
 
-      // wire task delete
+      // toggle subtasks & persist
+      const toggleBtn = tr.querySelector('.toggle-btn');
+      toggleBtn.onclick = () => {
+        const nowHidden = sr.style.display === 'none';
+        sr.style.display = nowHidden ? 'table-row' : 'none';
+        toggleBtn.textContent = nowHidden ? 'Hide Subtasks' : 'Show Subtasks';
+        saveData();
+      };
+
+      // delete task
       tr.querySelector('.delete-btn').onclick = () => {
         if (confirm('Delete this task?')) { tr.remove(); sr.remove(); applyFlashes(); }
       };
-      // toggle subtasks
-      tr.querySelector('.toggle-btn').onclick = () => {
-        sr.style.display = sr.style.display==='none' ? 'table-row' : 'none';
-      };
-      // recalc on any change
       tr.querySelectorAll('input, select').forEach(i => i.addEventListener('change', applyFlashes));
-
-      // toggle alert
       tr.querySelector('.days-left').addEventListener('click', e => {
         const s = e.currentTarget;
         s.dataset.flashDisabled = s.dataset.flashDisabled==='true'?'false':'true';
@@ -652,7 +702,7 @@ function daysLeft(d) {
               pEl = sr.querySelector('.subtask-priority'),
               noEl= sr.querySelector('.subtask-notes');
         const n2 = nEl.value.trim(), d2 = dEl.value;
-        if (!n2||!d2) return alert('Name & due date required');
+        if (!n2 || !d2) return alert('Name & due date required');
         const dl2 = daysLeft(d2);
         const sTr = document.createElement('tr');
         sTr.className = 'subtask-entry'; sTr.dataset.hue = hue;
@@ -694,17 +744,18 @@ function daysLeft(d) {
         applyFlashes();
       };
 
-      applyFlashes();
+      // reconstruct saved subtasks
+      subtasks.forEach(subData => addSubtaskFromData(panel, tr, subData));
     }
 
     function applyFlashes() {
       const panel = activePanel();
       if (!panel) return;
 
-      // recalc days-left for every span
+      // recalc days-left
       panel.querySelectorAll('.days-left').forEach(span => {
         const row = span.closest('tr');
-        const di = row.querySelector('input[type="date"]');
+        const di  = row.querySelector('input[type="date"]');
         if (di?.value) {
           const dl = daysLeft(di.value);
           span.dataset.daysLeft = dl;
@@ -712,7 +763,7 @@ function daysLeft(d) {
         }
       });
 
-      // row states and priority colors
+      // states & priorities
       panel.querySelectorAll('.task-row, .subtask-entry').forEach(tr => {
         const st = tr.querySelector('select.task-status, select.subtask-status').value;
         tr.classList.toggle('on-hold', st==='On Hold');
@@ -730,19 +781,19 @@ function daysLeft(d) {
         }
       });
 
-      // flashing days-left
+      // flashing
       panel.querySelectorAll('.days-left').forEach(span => {
         span.classList.remove('flash-warn','flash-alarm');
         const row = span.closest('tr');
         if (row.classList.contains('on-hold') || span.dataset.flashDisabled==='true') return;
-        const d = parseInt(span.dataset.daysLeft,10);
+        const d     = parseInt(span.dataset.daysLeft,10);
         const warn  = +panel.querySelector('.warnDaysInput').value;
         const alarm = +panel.querySelector('.alarmDaysInput').value;
-        if (d < alarm)      span.classList.add('flash-alarm');
-        else if (d < warn)  span.classList.add('flash-warn');
+        if (d < alarm)     span.classList.add('flash-alarm');
+        else if (d < warn) span.classList.add('flash-warn');
       });
 
-      // project & tab flashing
+      // project & tab flashes
       panel.querySelectorAll('.project-container').forEach(prj => {
         let al=false, wn=false;
         prj.querySelectorAll('.days-left').forEach(sp => {
@@ -756,7 +807,7 @@ function daysLeft(d) {
         h2.classList.toggle('flash-warn', !al && wn);
       });
       document.querySelectorAll('.tracker-tab').forEach(tab => {
-        const i = Array.from(document.querySelectorAll('.tracker-tab')).indexOf(tab);
+        const i   = Array.from(document.querySelectorAll('.tracker-tab')).indexOf(tab);
         const pnl = document.querySelectorAll('.tracker-panel')[i];
         let al=false, wn=false;
         pnl.querySelectorAll('.days-left').forEach(sp => {
@@ -782,12 +833,13 @@ function daysLeft(d) {
       });
       const tb = document.querySelector('#dueSoonTable tbody');
       tb.innerHTML = '';
-      let cnt = 0;
+      let cnt=0;
       panel.querySelectorAll('.task-row').forEach(tr => {
         if (tr.classList.contains('on-hold')) return;
         const sp = tr.querySelector('.days-left');
         if (!sp) return;
-        const a = sp.classList.contains('flash-alarm'), w = sp.classList.contains('flash-warn');
+        const a = sp.classList.contains('flash-alarm');
+        const w = sp.classList.contains('flash-warn');
         if (!a && !w) return;
         const row = document.createElement('tr');
         row.style.backgroundColor = tr.style.backgroundColor;
@@ -795,8 +847,8 @@ function daysLeft(d) {
         c1.textContent = tr.cells[1].textContent;
         const s2 = document.createElement('span');
         s2.textContent = sp.dataset.daysLeft+'d';
-        s2.dataset.daysLeft = sp.dataset.daysLeft;
-        s2.dataset.flashDisabled = sp.dataset.flashDisabled;
+        s2.dataset.daysLeft     = sp.dataset.daysLeft;
+        s2.dataset.flashDisabled= sp.dataset.flashDisabled;
         a ? s2.classList.add('flash-alarm') : s2.classList.add('flash-warn');
         c2.appendChild(s2);
         tb.appendChild(row);
@@ -809,17 +861,17 @@ function daysLeft(d) {
 
       attachDragHandlers(activePanel());
       attachSubDragHandlers(activePanel());
-    
+
       saveData();
     }
 
     function attachDragHandlers(panel) {
       panel.querySelectorAll('.task-row').forEach(tr => {
         tr.draggable = true;
-        tr.onmousedown = ()=> draggedRow = tr;
-        tr.ondragstart = e=> e.dataTransfer.setData('text','');
-        tr.ondragover  = e=> e.preventDefault();
-        tr.ondrop      = e=> {
+        tr.onmousedown  = () => draggedRow = tr;
+        tr.ondragstart = e => e.dataTransfer.setData('text','');
+        tr.ondragover  = e => e.preventDefault();
+        tr.ondrop      = e => {
           e.preventDefault();
           if (draggedRow && tr!==draggedRow) {
             const sib = draggedRow.nextElementSibling;
@@ -833,10 +885,10 @@ function daysLeft(d) {
     function attachSubDragHandlers(panel) {
       panel.querySelectorAll('.subtask-entry').forEach(tr => {
         tr.draggable = true;
-        tr.onmousedown = ()=> draggedRow = tr;
-        tr.ondragstart = e=> e.dataTransfer.setData('text','');
-        tr.ondragover  = e=> e.preventDefault();
-        tr.ondrop      = e=> {
+        tr.onmousedown  = () => draggedRow = tr;
+        tr.ondragstart = e => e.dataTransfer.setData('text','');
+        tr.ondragover  = e => e.preventDefault();
+        tr.ondrop      = e => {
           e.preventDefault();
           if (draggedRow && tr!==draggedRow) {
             tr.parentNode.insertBefore(draggedRow, tr);
@@ -852,23 +904,13 @@ function daysLeft(d) {
       document.getElementById('dueSoonPanel').classList.toggle('open');
     });
 
-	window.addEventListener('DOMContentLoaded', () => {
-		// match the delete-button width
-		const add = document.getElementById('addTrackerBtn'),
-			  del = document.getElementById('deleteTrackerBtn');
-		del.style.width = add.offsetWidth + 'px';
+    window.addEventListener('DOMContentLoaded', () => {
+      const add = document.getElementById('addTrackerBtn'),
+            del = document.getElementById('deleteTrackerBtn');
+      del.style.width = add.offsetWidth + 'px';
 
-		// now load or initialize
-		console.log('DOMContentLoaded: loading saved data…');
-		if (!loadData()) {
-			console.log('No saved data found; creating first tracker');
-			addTracker();
-		}
-	});
-
-
-    
-    
+      if (!loadData()) addTracker();
+    });
   </script>
 </body>
 </html>
